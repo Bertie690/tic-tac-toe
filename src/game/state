@@ -1,0 +1,13 @@
+pub struct GameState {
+    /// The current state of the tic-tac-toe board.
+    board: Board,
+
+    /// The two players in the game.
+    players: [Player; 2],
+
+    /// The player whose turn it is to move.
+    current_player: usize,
+
+    previous_state: Option<Box<GameState>>,
+    next_state: Option<Box<GameState>>,
+}

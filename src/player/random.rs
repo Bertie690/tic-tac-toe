@@ -1,7 +1,7 @@
 use crate::{
     game::{
-        board::{Board, Position},
-        mark::Mark,
+        {Board, Position},
+        Mark,
     },
     player::Player,
 };

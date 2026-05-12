@@ -1,13 +1,13 @@
 use crate::game::mark::Mark;
 use crate::game::result::GameResult;
-use ndarray::{Array2, ArrayView2, Shape, ShapeBuilder, array};
+use ndarray::{Array2, ArrayView2};
 
 /// An (x, y) position in the playing field.
 pub type Position = (usize, usize);
 
 /// A Board represents a 3x3 tic-tac-toe grid.
 // TODO: Generalize to an NxN grid
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     /// The underlying square grid of cells.
     grid: Array2<Option<Mark>>,
@@ -69,7 +69,7 @@ impl Board {
     }
 
     /// Validate whether a move is legal given the current board state.
-    pub fn validate_board_state(&self, pos: Position, mark: Mark) -> Option<anyhow::Error> {
+    pub fn validate_board_state(&self, pos: Position) -> Option<anyhow::Error> {
         let (row, col) = pos;
         // index must be in range & unoccupied
         if row >= self.grid.nrows() || col >= self.grid.ncols() {
@@ -101,6 +101,8 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::{mark::Mark, result::GameResult};
+    use ndarray::array;
 
     #[test]
     fn test_board_state_x_wins() {

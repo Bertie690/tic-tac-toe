@@ -1,28 +1,43 @@
-pub mod board;
-pub mod mark;
-pub mod result;
+mod board;
+mod mark;
+mod result;
+
+use std::sync::mpsc::{self, Sender};
+
+// re-export these for easier access by other modules
+pub use board::{Board, Position};
+pub use mark::Mark;
+pub use result::GameResult;
 
 use ndarray::Array2;
 
-use crate::{game::board::Board, player::Player};
+use crate::{player::Player, renderer::GameUpdate};
 
 const NUM_PLAYERS: usize = 2;
 
-struct Game<'a> {
+pub struct Game<'a> {
     /// The current turn number (starting from 0).
     turn: usize,
-
     /// The current state of the game board.
     board: Board,
     /// The players participating in the game.
     players: [&'a mut dyn Player; NUM_PLAYERS],
     /// The index of the player whose turn it is to play.
     turn_player: usize,
+    /// The sending end of the channel used to send the current board state to the renderer.
+    board_tx: Sender<GameUpdate>,
+    /// Whether the game has finished. Used to prevent moves from being played after the game is over.
+    pub is_finished: bool,
 }
 
 impl<'a> Game<'a> {
     /// Creates a new game with the given players.
-    pub fn new(players: [&'a mut dyn Player; NUM_PLAYERS]) -> Result<Self, anyhow::Error> {
+    ///
+    /// Returns an error if 2 players share the same mark.
+    pub fn new(
+        players: [&'a mut dyn Player; NUM_PLAYERS],
+        board_tx: Sender<GameUpdate>,
+    ) -> Result<Self, anyhow::Error> {
         // yes this is O(n^2) but n is small and this is only called once so it's fiiiiine
         for i in 0..players.len() {
             for j in (i + 1)..players.len() {
@@ -37,21 +52,63 @@ impl<'a> Game<'a> {
             }
         }
 
+        // send the initial board state to the renderer
+        let board = Board::new(Array2::from_elem((3, 3), None));
+        board_tx.send(GameUpdate::Move {
+            board: board.clone(),
+        })?;
         Ok(Self {
             turn: 0,
-            board: Board::new(Array2::from_elem((3, 3), None)),
+            board,
             players,
             turn_player: 0,
+            board_tx: board_tx,
+            is_finished: false,
         })
     }
 
     /// Execute a single turn of the game.
-    pub fn play_move(&mut self) {
+    pub fn play_move(&mut self) -> Result<(), anyhow::Error> {
+        self.verify_unfinished()?;
+
         let current_player = &mut self.players[self.turn_player];
         let pos = current_player.choose_move(&self.board);
         self.board.play_mark(pos, current_player.get_mark().into());
         self.turn += 1;
         self.turn_player = (self.turn_player + 1) % NUM_PLAYERS;
+        self.board_tx.send(GameUpdate::Move {
+            board: self.board.clone(),
+        })?;
+
+        let result = self.board.state();
+        if result == GameResult::Ongoing {
+            Ok(())
+        } else {
+            self.finish_game(result)
+        }
+    }
+
+    /// Verify that the game is not already finished, returning an error if it is.
+    fn verify_unfinished(&self) -> Result<(), anyhow::Error> {
+        if self.is_finished {
+            Err(anyhow::anyhow!("Game is already finished"))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// End the game, sending the final board state and result to the renderer.
+    ///
+    /// Takes the result as an argument to avoid having to recompute it.
+    fn finish_game(&mut self, result: GameResult) -> Result<(), anyhow::Error> {
+        self.verify_unfinished()?;
+
+        self.is_finished = true;
+        self.board_tx.send(GameUpdate::Finished {
+            board: self.board.clone(),
+            result,
+        })?;
+        Ok(())
     }
 }
 
@@ -61,6 +118,7 @@ mod tests {
 
     use super::*;
     use crate::game::{board::Position, mark::Mark};
+    use mpsc::channel;
 
     /// A dummy player that always makes the same moves.
     struct DumbPlayer {
@@ -86,33 +144,83 @@ mod tests {
             preset_move: (0, 1),
             mark: Mark::O,
         };
-        let mut game = Game::new([p1, p2]).unwrap();
 
-        assert_eq!(
-            game.board.grid(),
-            array![[None, None, None], [None, None, None], [None, None, None],]
+        let (board_tx, board_rx) = mpsc::channel::<GameUpdate>();
+        let mut game = Game::new([p1, p2], board_tx).unwrap();
+
+        let new_board = array![[None, None, None], [None, None, None], [None, None, None],];
+        assert_eq!(game.board.grid(), new_board,);
+        assert!(
+            board_rx.try_recv().is_ok_and(
+                |b| matches!(b, GameUpdate::Move { board } if board.grid() == new_board)
+            ),
+            "Game should send the initial board state to the renderer on creation"
         );
 
-        game.play_move();
-        assert_eq!(
-            game.board.grid(),
-            array![
-                [Some(Mark::X), None, None],
-                [None, None, None],
-                [None, None, None],
-            ]
+        let new_board = array![
+            [Some(Mark::X), None, None],
+            [None, None, None],
+            [None, None, None],
+        ];
+
+        game.play_move()
+            .expect("connection to renderer shouldn't fail mid-game");
+        assert_eq!(game.board.grid(), new_board,);
+        assert!(
+            board_rx.try_recv().is_ok_and(
+                |b| matches!(b, GameUpdate::Move { board } if board.grid() == new_board)
+            ),
+            "Game should send the updated board state to the renderer after each move"
         );
         assert_eq!(game.turn, 1);
         assert_eq!(game.turn_player, 1);
 
-        game.play_move();
-        assert_eq!(
-            game.board.grid(),
-            array![
-                [Some(Mark::X), Some(Mark::O), None],
-                [None, None, None],
-                [None, None, None],
-            ]
+        let new_board = array![
+            [Some(Mark::X), Some(Mark::O), None],
+            [None, None, None],
+            [None, None, None],
+        ];
+        game.play_move()
+            .expect("connection to renderer shouldn't fail mid-game");
+        assert_eq!(game.board.grid(), new_board);
+        assert!(
+            board_rx.try_recv().is_ok_and(
+                |b| matches!(b, GameUpdate::Move { board } if board.grid() == new_board)
+            ),
+            "Game should send the updated board state to the renderer after each move"
+        );
+        assert_eq!(game.turn, 2);
+        assert_eq!(game.turn_player, 0);
+    }
+
+    #[test]
+    fn test_game_finish_game() {
+        let p1 = &mut DumbPlayer {
+            preset_move: (0, 0),
+            mark: Mark::X,
+        };
+        let p2 = &mut DumbPlayer {
+            preset_move: (1, 0),
+            mark: Mark::O,
+        };
+
+        let (board_tx, board_rx) = channel::<GameUpdate>();
+        let mut game = Game::new([p1, p2], board_tx).unwrap();
+
+        // discard initial board state
+        board_rx
+            .try_recv()
+            .expect("game should send initial board state during init");
+
+        game.finish_game(GameResult::Winner(Mark::X))
+            .expect("connection to renderer shouldn't fail mid-game");
+
+        let upd = board_rx.try_recv().unwrap();
+        assert!(
+            matches!(upd, GameUpdate::Finished { ref board, result }
+                if *board == game.board && result == GameResult::Winner(Mark::X)),
+            "Game should send the final board state and result to the renderer when the game finishes; got {:?}",
+            upd.clone()
         );
     }
 }

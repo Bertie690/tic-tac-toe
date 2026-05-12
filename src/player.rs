@@ -1,13 +1,16 @@
 //! This module contains the definition of the Player trait, alongside implementations of various CPU players.
 
 use crate::game::{
-    board::{Board, Position},
-    mark::Mark,
+    Mark, {Board, Position},
 };
 
-mod tui;
 mod minimax;
 mod random;
+mod tui;
+
+pub use minimax::Minimax;
+pub use random::Random;
+pub use tui::TuiPlayer;
 
 /// A `Player` represents an agent in the game capable of choosing their next move.
 pub trait Player {

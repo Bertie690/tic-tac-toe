@@ -1,9 +1,5 @@
 use crate::{
-    game::{
-        board::{Board, Position},
-        mark::Mark,
-        result::GameResult,
-    },
+    game::{Board, GameResult, Mark, Position},
     player::Player,
 };
 
@@ -12,6 +8,13 @@ use crate::{
 /// (assuming optimal play from the opponent).
 pub struct Minimax {
     mark: Mark,
+}
+
+impl Minimax {
+    /// Create a new Minimax player with the given mark.
+    pub fn new(mark: Mark) -> Self {
+        Self { mark }
+    }
 }
 
 impl Player for Minimax {
@@ -33,16 +36,10 @@ fn minimax_move(board: &Board, cpu_mark: Mark) -> Position {
             let b = &mut board.clone();
             b.play_mark(pos, cpu_mark);
 
-            alpha_beta(
-                b,
-                cpu_mark,
-                i32::MIN,
-                i32::MAX,
-                false,
-            )
+            alpha_beta(b, cpu_mark, i32::MIN, i32::MAX, false)
         })
         .expect("choose_move should not be called on a filled board")
-    }
+}
 
 /// alpha_beta implements the minimax algorithm with alpha-beta pruning,
 /// repeatedly evaluating the game tree until it reaches a terminal position (win/loss/draw) and pruning branches that cannot affect the final decision.
@@ -56,11 +53,7 @@ fn alpha_beta(
     let state = board.state();
     // Score terminal positions
     if let GameResult::Winner(winner) = state {
-        return if winner == cpu_mark {
-            1
-        } else {
-            -1
-        };
+        return if winner == cpu_mark { 1 } else { -1 };
     } else if state == GameResult::Draw {
         return 0;
     }
@@ -71,11 +64,7 @@ fn alpha_beta(
         cpu_mark.opposite()
     };
 
-    let mut best = if is_maximizing {
-        i32::MIN
-    } else {
-        i32::MAX
-    };
+    let mut best = if is_maximizing { i32::MIN } else { i32::MAX };
 
     // check each position, stopping early if we hit a guaranteed win/loss
     for pos in board.available_moves() {

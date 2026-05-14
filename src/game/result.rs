@@ -12,3 +12,4 @@ pub enum GameResult {
     /// The game has ended with a winner.
     Winner(Mark),
 }
+

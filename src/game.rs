@@ -2,7 +2,7 @@ mod board;
 mod mark;
 mod result;
 
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::Sender;
 
 // re-export these for easier access by other modules
 pub use board::{Board, Position};
@@ -25,7 +25,7 @@ pub struct Game<'a> {
     /// The index of the player whose turn it is to play.
     turn_player: usize,
     /// The sending end of the channel used to send the current board state to the renderer.
-    board_tx: Sender<GameUpdate>,
+    update_tx: Sender<GameUpdate>,
     /// Whether the game has finished. Used to prevent moves from being played after the game is over.
     pub is_finished: bool,
 }
@@ -36,7 +36,7 @@ impl<'a> Game<'a> {
     /// Returns an error if 2 players share the same mark.
     pub fn new(
         players: [&'a mut dyn Player; NUM_PLAYERS],
-        board_tx: Sender<GameUpdate>,
+        update_tx: Sender<GameUpdate>,
     ) -> Result<Self, anyhow::Error> {
         // yes this is O(n^2) but n is small and this is only called once so it's fiiiiine
         for i in 0..players.len() {
@@ -54,7 +54,7 @@ impl<'a> Game<'a> {
 
         // send the initial board state to the renderer
         let board = Board::new(Array2::from_elem((3, 3), None));
-        board_tx.send(GameUpdate::Move {
+        update_tx.send(GameUpdate::Move {
             board: board.clone(),
         })?;
         Ok(Self {
@@ -62,7 +62,7 @@ impl<'a> Game<'a> {
             board,
             players,
             turn_player: 0,
-            board_tx: board_tx,
+            update_tx,
             is_finished: false,
         })
     }
@@ -76,7 +76,7 @@ impl<'a> Game<'a> {
         self.board.play_mark(pos, current_player.get_mark().into());
         self.turn += 1;
         self.turn_player = (self.turn_player + 1) % NUM_PLAYERS;
-        self.board_tx.send(GameUpdate::Move {
+        self.update_tx.send(GameUpdate::Move {
             board: self.board.clone(),
         })?;
 
@@ -104,7 +104,7 @@ impl<'a> Game<'a> {
         self.verify_unfinished()?;
 
         self.is_finished = true;
-        self.board_tx.send(GameUpdate::Finished {
+        self.update_tx.send(GameUpdate::Finished {
             board: self.board.clone(),
             result,
         })?;
@@ -118,7 +118,7 @@ mod tests {
 
     use super::*;
     use crate::game::{board::Position, mark::Mark};
-    use mpsc::channel;
+    use std::sync::mpsc::channel;
 
     /// A dummy player that always makes the same moves.
     struct DumbPlayer {
@@ -145,7 +145,7 @@ mod tests {
             mark: Mark::O,
         };
 
-        let (board_tx, board_rx) = mpsc::channel::<GameUpdate>();
+        let (board_tx, board_rx) = channel::<GameUpdate>();
         let mut game = Game::new([p1, p2], board_tx).unwrap();
 
         let new_board = array![[None, None, None], [None, None, None], [None, None, None],];

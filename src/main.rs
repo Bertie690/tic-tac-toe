@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 use crate::{
-    game::{Board, Game, Mark, Position},
+    game::{Game, Mark, Position},
     player::{Minimax, TuiPlayer},
     renderer::{GameUpdate, TuiRenderer},
 };
@@ -14,7 +14,7 @@ fn main() -> anyhow::Result<()> {
     // TODO: Create title screen to allow selecting player mark/diff level
     let mark = Mark::X; // TODO: get from title screen
 
-    let (board_tx, board_rx) = mpsc::channel::<GameUpdate>();
+    let (update_tx, update_rx) = mpsc::channel::<GameUpdate>();
     let (move_tx, move_rx) = mpsc::channel::<Position>();
 
     // Pass the ends of the channel to the renderer and player:
@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
 
     // Start the game thread in the background
     let thread = std::thread::spawn(move || -> anyhow::Result<()> {
-        let mut game = Game::new([&mut player, &mut cpu], board_tx)
+        let mut game = Game::new([&mut player, &mut cpu], update_tx)
             .expect("game initialization should succeed");
 
         while !game.is_finished {
@@ -33,7 +33,7 @@ fn main() -> anyhow::Result<()> {
         Ok(())
     });
 
-    renderer.run(board_rx, move_tx)?;
+    renderer.run(update_rx, move_tx)?;
 
     thread
         .join()

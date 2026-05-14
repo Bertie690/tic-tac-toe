@@ -1,14 +1,12 @@
 //! The renderer package implements a simple TUI renderer
 
+pub mod components;
 mod id;
 mod message;
 mod model;
 mod port;
-pub mod components;
 
-pub use components::{
-    board::BoardComponent,
-};
+pub use components::board::BoardComponent;
 
 use std::{
     sync::mpsc::{self, Receiver, Sender},
@@ -56,6 +54,8 @@ impl Renderer for mpsc::Sender<GameUpdate> {
 /// [`TuiPlayer`]: crate::player::TuiPlayer
 pub struct TuiRenderer;
 
+const POLL_TIMEOUT: u64 = 20; // ms
+
 impl TuiRenderer {
     /// Start the main TUI event loop.
     /// Returns the first error encountered, if any occur before the game is quitted.
@@ -63,16 +63,16 @@ impl TuiRenderer {
     /// It is the caller's responsibility to pass the other ends of the provided channels to their proper destinations.
     pub fn run(
         &mut self,
-        board_rx: Receiver<GameUpdate>,
+        update_rx: Receiver<GameUpdate>,
         move_tx: Sender<Position>,
     ) -> anyhow::Result<()> {
-        let mut model = Model::new(move_tx, board_rx)?;
+        let mut model = Model::new(update_rx, move_tx)?;
         model.view(); // initial draw
 
         while !model.quit {
             match model
                 .app
-                .tick(PollStrategy::Once(Duration::from_millis(20)))
+                .tick(PollStrategy::Once(Duration::from_millis(POLL_TIMEOUT)))
             {
                 Ok(msgs) => {
                     for msg in msgs {

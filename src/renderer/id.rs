@@ -4,6 +4,7 @@ pub enum Id {
     /// the 3×3 grid
     Board,
 
+    // TODO: Implement these portions of the UI
     /// A line of text displaying the previous move made (P2 placed O at (0, 2)).
     /// Also displays game status and/or difficulty level.
     Status,

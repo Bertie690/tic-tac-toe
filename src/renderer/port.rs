@@ -7,19 +7,19 @@ use tuirealm::{
 
 use crate::renderer::{GameUpdate, message::UserEvent};
 
-pub struct BoardUpdatePort {
-    board_rx: Receiver<GameUpdate>,
+pub struct GameUpdatePort {
+    update_rx: Receiver<GameUpdate>,
 }
 
-impl BoardUpdatePort {
-    pub fn new(board_rx: Receiver<GameUpdate>) -> Self {
-        Self { board_rx }
+impl GameUpdatePort {
+    pub fn new(update_rx: Receiver<GameUpdate>) -> Self {
+        Self { update_rx }
     }
 }
 
-impl Poll<UserEvent> for BoardUpdatePort {
+impl Poll<UserEvent> for GameUpdatePort {
     fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
-        match self.board_rx.try_recv() {
+        match self.update_rx.try_recv() {
             Ok(update) => Ok(Some(Event::User(UserEvent::GameUpdated(update)))),
             Err(mpsc::TryRecvError::Empty) => Ok(None),
             Err(mpsc::TryRecvError::Disconnected) => Err(PortError::PermanentError(

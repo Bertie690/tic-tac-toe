@@ -2,7 +2,7 @@ use std::array;
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction as LayoutDirection, Layout, Rect},
+    layout::{Margin, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Widget},
 };
@@ -11,7 +11,7 @@ use tuirealm::{
     component::{AppComponent, Component},
     event::{Event, Key, KeyEvent},
     props::{AttrValue, Attribute, QueryResult},
-    state::{State},
+    state::State,
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
     renderer::{
         GameUpdate,
         components::cell::CellComponent,
-        message::{Message, UserEvent},
+        enums::{Message, UserEvent},
     },
 };
 
@@ -33,10 +33,7 @@ struct BoardComponent {
 
 impl BoardComponent {
     pub fn new(board: Board) -> Self {
-        let cells = array::from_fn(|_| {
-            array::from_fn(|_|
-                Box::new(CellComponent { mark: None }))
-        });
+        let cells = array::from_fn(|_| array::from_fn(|_| Box::new(CellComponent { mark: None })));
 
         Self {
             board,
@@ -44,34 +41,55 @@ impl BoardComponent {
             cells,
         }
     }
+
+    /// Split the provided `area` into an equally sized 3x3 grid of `Rect`s representing the cell areas,
+    /// applying extra padding as necessary to ensure equal cell dimensions.
+    ///
+    /// Returns `None` if the provided area is too small to create a sufficiently padded 3x3 grid.
+    fn split_area_into_cells(area: Rect) -> Option<[[Rect; 3]; 3]> {
+        if area.width == 0 || area.height == 0 {
+            return None;
+        }
+
+        let board_with_margins = area.inner(Margin::new(1, 1));
+
+        // Truncate board dimensions to the next lowest multiple of 3 to ensure equal sizes,
+        // using any leftover as padding
+        let usable_width = board_with_margins.width - (board_with_margins.width % 3);
+        let usable_height = board_with_margins.height - (board_with_margins.height % 3);
+
+        if usable_width == 0 || usable_height == 0 {
+            return None;
+        }
+
+        let offset_x = board_with_margins.x + ((board_with_margins.width - usable_width) / 2);
+        let offset_y = board_with_margins.y + ((board_with_margins.height - usable_height) / 2);
+
+        let cell_width = usable_width / 3;
+        let cell_height = usable_height / 3;
+
+        let cells: [[Rect; 3]; 3] = array::from_fn(|row| {
+            array::from_fn(|col| {
+                Rect::new(
+                    offset_x + (col as u16) * cell_width,
+                    offset_y + (row as u16) * cell_height,
+                    cell_width,
+                    cell_height,
+                )
+            })
+        });
+
+        Some(cells)
+    }
 }
 
 impl Component for BoardComponent {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
-        let side = area.width.min(area.height);
-        if side == 0 {
+        let Some(cells) = BoardComponent::split_area_into_cells(area) else {
             return;
-        }
+        };
 
-        let board_rows = area.layout_vec(&Layout::new(
-            LayoutDirection::Vertical,
-            [
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-            ],
-        ));
-
-        for (row, row_area) in board_rows.into_iter().enumerate() {
-            let row_cells = row_area.layout_vec(&Layout::new(
-                LayoutDirection::Horizontal,
-                [
-                    Constraint::Ratio(1, 3),
-                    Constraint::Ratio(1, 3),
-                    Constraint::Ratio(1, 3),
-                ],
-            ));
-
+        for (row, row_cells) in cells.into_iter().enumerate() {
             for (col, cell_area) in row_cells.into_iter().enumerate() {
                 self.cells[row][col].mark = self.board.grid()[(row, col)];
 
@@ -145,10 +163,9 @@ impl AppBoardComponent {
         }
     }
 
-    fn handle_key_event(&mut self, ke: &KeyEvent ) -> Option<Message> {
+    fn handle_key_event(&mut self, ke: &KeyEvent) -> Option<Message> {
         match ke {
             KeyEvent { code: Key::Esc, .. } => Some(Message::FocusSidebar),
-            KeyEvent { code: Key::Char('q'), .. } => Some(Message::AppQuit),
             KeyEvent {
                 code: Key::Left | Key::Char('h') | Key::Char('a'),
                 ..
@@ -197,14 +214,17 @@ impl AppComponent<Message, UserEvent> for AppBoardComponent {
             Event::User(UserEvent::GameUpdated(GameUpdate::Initial(board))) => {
                 self.component.board = board.clone();
                 self.component.selected_cell = (0, 0);
+
                 Some(Message::Redraw)
             }
             Event::User(UserEvent::GameUpdated(GameUpdate::Move(Move { position, mark }))) => {
                 self.component.board.set_mark(*position, *mark);
+
                 Some(Message::Redraw)
             }
             Event::User(UserEvent::GameUpdated(GameUpdate::Finished { board, .. })) => {
                 self.component.board = board.clone();
+
                 Some(Message::Redraw)
             }
             _ => None,
@@ -223,7 +243,7 @@ mod tests {
     use super::AppBoardComponent;
     use crate::{
         game::Board,
-        renderer::message::{Message, UserEvent},
+        renderer::enums::{Message, UserEvent},
     };
 
     /// Create a new empty board component for testing with an empty board starting at the top-left corner.
@@ -296,5 +316,33 @@ mod tests {
         board.component.selected_cell = (1, 1);
         assert_eq!(press(&mut board, 's'), Some(Message::Redraw));
         assert_eq!(board.component.selected_cell, (2, 1));
+    }
+
+    #[test]
+    fn test_split_area_into_cells_dimensions() {
+        use ratatui::layout::{Margin, Rect};
+
+        let area = Rect::new(0, 0, 77, 16);
+        let cells =
+            super::BoardComponent::split_area_into_cells(area).expect("should split correctly");
+
+        // ensure that all the cells have equal dimensions
+        let first_cell = cells[0][0];
+        for row in cells.iter().flatten().skip(1) {
+            assert_eq!(row.width, first_cell.width);
+            assert_eq!(row.height, first_cell.height);
+        }
+
+        // ensure that the entirety of the usable inner area (rounded down
+        // to multiples of 3) is used by the cells
+        let board_with_margins = area.inner(Margin::new(1, 1));
+        let total_width: u16 = cells[0].iter().map(|r| r.width).sum();
+        let total_height: u16 = cells.iter().map(|row| row[0].height).sum();
+
+        let usable_width = board_with_margins.width - (board_with_margins.width % 3);
+        let usable_height = board_with_margins.height - (board_with_margins.height % 3);
+
+        assert_eq!(total_width, usable_width);
+        assert_eq!(total_height, usable_height);
     }
 }

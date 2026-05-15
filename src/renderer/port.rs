@@ -5,7 +5,7 @@ use tuirealm::{
     listener::{Poll, PortError, PortResult},
 };
 
-use crate::renderer::{GameUpdate, message::UserEvent};
+use crate::renderer::{GameUpdate, enums::UserEvent};
 
 pub struct GameUpdatePort {
     update_rx: Receiver<GameUpdate>,

@@ -57,6 +57,7 @@ impl Game {
 
         // send the initial board state to the renderer
         let board = Board::new(Array2::from_elem((3, 3), None));
+        update_tx.send(GameUpdate::Initial(board.clone()))?;
         Ok(Self {
             turn: 0,
             board,
@@ -156,9 +157,9 @@ mod tests {
         let new_board = array![[None, None, None], [None, None, None], [None, None, None],];
         assert_eq!(game.board.grid(), new_board);
         assert!(
-            board_rx
-                .try_recv()
-                .is_ok_and(|b| matches!(b, GameUpdate::Initial(board) if board.grid() == new_board)),
+            board_rx.try_recv().is_ok_and(
+                |b| matches!(b, GameUpdate::Initial(board) if board.grid() == new_board)
+            ),
             "Game should send initial board state on creation"
         );
 

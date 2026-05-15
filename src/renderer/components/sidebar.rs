@@ -13,7 +13,7 @@ use tuirealm::{
     state::State,
 };
 
-use crate::renderer::message::{Message, UserEvent};
+use crate::renderer::enums::{Message, UserEvent};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SidebarOption {

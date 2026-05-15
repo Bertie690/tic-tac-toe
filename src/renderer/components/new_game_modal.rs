@@ -15,7 +15,7 @@ use tuirealm::{
 
 use crate::{
     game::{GameConfig, Mark, OpponentKind},
-    renderer::message::{Message, UserEvent},
+    renderer::enums::{Message, UserEvent},
 };
 
 /// Enum representing the rows of the new game modal
@@ -169,21 +169,20 @@ impl Component for NewGameModalComponent {
         };
 
         let lines = vec![
-            Line::from(""),
             Line::from(vec![
-                Span::styled("  Mark:    ", mark_row_style),
+                Span::styled("  Mark:         ", mark_row_style),
                 Span::styled(" X ", x_style),
                 Span::raw("  "),
                 Span::styled(" O ", o_style),
             ]),
             Line::from(vec![
-                Span::styled("  Enemy Type:      ", opp_row_style),
+                Span::styled("  Enemy Type:   ", opp_row_style),
                 Span::styled(" Minimax ", minimax_style),
                 Span::raw("  "),
                 Span::styled(" Random ", random_style),
             ]),
             Line::from(vec![
-                Span::styled("  First Move:      ", first_move_row_style),
+                Span::styled("  First Move:   ", first_move_row_style),
                 Span::styled(
                     " Player ",
                     if self.player_first { selected } else { normal },
@@ -192,8 +191,8 @@ impl Component for NewGameModalComponent {
                 Span::styled(" CPU ", if !self.player_first { selected } else { normal }),
             ]),
             Line::from(vec![
-                Span::raw("   "),
-                Span::styled("   Start Game   ", start_style),
+                Span::raw("  "),
+                Span::styled(" Start Game!  ", start_style),
             ]),
         ];
 
@@ -291,7 +290,7 @@ impl AppNewGameModal {
                 code: Key::Enter | Key::Char(' '),
                 ..
             } => {
-                // Submit always; if cursor is on a value row, also advance down.
+                // Submit always; if cursor is on a value row, also advance down
                 let config = self.component.build_config();
                 match self.component.row {
                     ModalRow::Start => Some(Message::StartGame(config)),

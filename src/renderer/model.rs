@@ -1,6 +1,9 @@
-use ratatui::layout::{Constraint, Layout, Margin, Size};
-use std::sync::mpsc::{self, Receiver, Sender};
+use ndarray::Array2;
+use ratatui::layout::{Constraint, Layout};
+use std::sync::mpsc::{self, Receiver, Sender, channel};
 use std::time::Duration;
+use tuirealm::event::KeyEvent;
+use tuirealm::props::Attribute;
 use tuirealm::{
     application::Application,
     listener::EventListenerCfg,
@@ -11,9 +14,10 @@ use tuirealm::{
 use crate::{
     game::{Board, Move, Position},
     renderer::{
-        AppBoardComponent, AppNewGameModal, AppSidebarComponent, GameRequest, GameUpdate,
-        id::Id,
-        message::{Message, UserEvent},
+        AppBoardComponent, AppNewGameModal, AppSidebarComponent, AppStatusComponent, GameRequest,
+        GameUpdate,
+        enums::Id,
+        enums::{Message, UserEvent},
         port::GameUpdatePort,
     },
 };
@@ -53,25 +57,32 @@ impl Model {
                 .add_port(Box::new(port), Duration::from_millis(20), 1),
         );
 
-        let board = Board::new(ndarray::Array2::from_elem((3, 3), None));
-        // Subscribe the board to game-update user events so it receives them
-        // even when the sidebar has focus. Keyboard events reach it only when focused.
+        let board = Board::new(Array2::from_elem((3, 3), None));
+        // Subscribe the board to game update events so it receives them
+        // even when the sidebar has focus
         app.mount(
             Id::Board,
             Box::new(AppBoardComponent::new(board)),
             vec![Sub::new(
-                EventClause::Discriminant(UserEvent::GameUpdated(GameUpdate::Move(
-                    Move::default(),
-                ))),
+                EventClause::Discriminant(UserEvent::GameUpdated(
+                    GameUpdate::Move(Move::default()),
+                )),
                 SubClause::Always,
             )],
         )?;
-        // The sidebar only needs keyboard events, which it receives only when focused.
+
         app.mount(
-            Id::Sidebar,
-            Box::new(AppSidebarComponent::new()),
-            vec![],
+            Id::Status,
+            Box::new(AppStatusComponent::new()),
+            vec![Sub::new(
+                // needed to allow passing any keyboard event when unfocused
+                EventClause::Any,
+                SubClause::Always,
+            )],
         )?;
+
+        // The sidebar only needs keyboard events, which it receives only when focused
+        app.mount(Id::Sidebar, Box::new(AppSidebarComponent::new()), vec![])?;
         app.active(&Id::Sidebar)?;
 
         Ok(Self {
@@ -109,11 +120,9 @@ impl Model {
             }
             Message::OpenNewGameModal => {
                 if !self.app.mounted(&Id::NewGameModal) {
-                    let _ = self.app.mount(
-                        Id::NewGameModal,
-                        Box::new(AppNewGameModal::new()),
-                        vec![],
-                    );
+                    let _ =
+                        self.app
+                            .mount(Id::NewGameModal, Box::new(AppNewGameModal::new()), vec![]);
                 }
                 let _ = self.app.active(&Id::NewGameModal);
                 Some(Message::Redraw)
@@ -144,28 +153,23 @@ impl Model {
         let modal_open = self.app.mounted(&Id::NewGameModal);
         self.terminal
             .draw(|frame| {
-                let [board_area, sidebar_area] = Layout::horizontal([
-                    Constraint::Ratio(3, 5),
-                    Constraint::Ratio(2, 5),
-                ])
-                .areas(frame.area());
+                let [play_area, sidebar_area] =
+                    Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)])
+                        .areas(frame.area());
 
-                // Add a 1 character margin around the board and clamp it to a square, ensuring it is always a multiple of 3 for easy division
-                let board_with_margins = board_area.inner(Margin::new(1, 1));
-                let side_length = board_with_margins.width.min(board_with_margins.height);
-                let side_rounded = side_length - (side_length % 3);
-                let squared = board_with_margins.resize(Size::new(side_rounded, side_rounded));
+                // Split the left area into the board and a 2-line status area beneath
+                let [board_area, status_area] =
+                    Layout::vertical([Constraint::Min(3), Constraint::Length(2)]).areas(play_area);
 
-                self.app.view(&Id::Board, frame, squared);
+                self.app.view(&Id::Board, frame, board_area);
+                self.app.view(&Id::Status, frame, status_area);
                 self.app.view(&Id::Sidebar, frame, sidebar_area);
 
                 if modal_open {
                     // Overlay the modal on the bottom half of the sidebar.
-                    let [_, modal_area] = Layout::vertical([
-                        Constraint::Ratio(1, 2),
-                        Constraint::Ratio(1, 2),
-                    ])
-                    .areas(sidebar_area);
+                    let [_, modal_area] =
+                        Layout::vertical([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+                            .areas(sidebar_area);
                     self.app.view(&Id::NewGameModal, frame, modal_area);
                 }
             })

@@ -17,7 +17,7 @@ fn draw_centered(ch: char, frame: &mut Frame, area: Rect) {
     frame.buffer_mut()[(center_x, center_y)].set_char(ch);
 }
 
-/// A CellComponent displays the contents of a single cell on the board.
+/// A [`CellComponent`] displays the contents of a single cell on the board.
 pub struct CellComponent {
     pub mark: Option<Mark>,
 }

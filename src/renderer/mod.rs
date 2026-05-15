@@ -1,14 +1,14 @@
 //! The renderer package implements a simple TUI renderer
 
 pub mod components;
-mod id;
-mod message;
+mod enums;
 mod model;
 mod port;
 
 pub use components::board::AppBoardComponent;
 pub use components::new_game_modal::AppNewGameModal;
 pub use components::sidebar::AppSidebarComponent;
+pub use components::status::AppStatusComponent;
 
 use std::{
     sync::mpsc::{self, Receiver, Sender},
@@ -18,28 +18,13 @@ use std::{
 use tuirealm::application::PollStrategy;
 
 use crate::{
-    game::{Board, GameConfig, GameResult, Move, Position},
+    game::{GameConfig, Position},
     renderer::model::Model,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// A `GameUpdate` represents an update to the game state that the renderer should display.
-pub enum GameUpdate {
-    /// The initial state of the game board, sent immediately after game creation.
-    Initial(Board),
+pub use enums::{GameUpdate, Id, Message, UserEvent};
 
-    /// A move was made on the board.
-    Move(
-        Move,
-    ),
-    /// The game has finished with the given result.
-    Finished {
-        board: Board,
-        result: GameResult,
-    },
-}
-
-/// CarrStruct representing a request to start a new game.
+/// Struct representing a request to start a new game.
 ///
 /// Created by [`Model`] when the user confirms a new game in the modal; consumed
 /// by the game-loop thread in `main`.

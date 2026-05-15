@@ -7,6 +7,7 @@ mod model;
 mod port;
 
 pub use components::board::AppBoardComponent;
+pub use components::new_game_modal::AppNewGameModal;
 pub use components::sidebar::AppSidebarComponent;
 
 use std::{
@@ -17,21 +18,34 @@ use std::{
 use tuirealm::application::PollStrategy;
 
 use crate::{
-    game::{Board, GameResult, Move, Position},
+    game::{Board, GameConfig, GameResult, Move, Position},
     renderer::model::Model,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A `GameUpdate` represents an update to the game state that the renderer should display.
 pub enum GameUpdate {
+    /// The initial state of the game board, sent immediately after game creation.
+    Initial(Board),
+
+    /// A move was made on the board.
     Move(
-        /// The move having been made.
         Move,
     ),
+    /// The game has finished with the given result.
     Finished {
         board: Board,
         result: GameResult,
     },
+}
+
+/// CarrStruct representing a request to start a new game.
+///
+/// Created by [`Model`] when the user confirms a new game in the modal; consumed
+/// by the game-loop thread in `main`.
+pub struct GameRequest {
+    pub config: GameConfig,
+    pub move_rx: Receiver<Position>,
 }
 
 pub trait Renderer {
@@ -51,14 +65,12 @@ impl Renderer for mpsc::Sender<GameUpdate> {
     }
 }
 
-/// Drives the TUI event loop. Owns no channel ends itself — the caller splits
-/// the channels and hands each end to the appropriate party:
-/// - `board_tx` is given to `Game` as its `Renderer`
-/// - `board_rx` is passed into [`TuiRenderer::run`]
-/// - `move_tx` is passed into [`TuiRenderer::run`]
-/// - `move_rx` is given to [`TuiPlayer`]
+/// Drives the TUI event loop.
 ///
-/// [`TuiPlayer`]: crate::player::TuiPlayer
+/// Channel wiring:
+/// - `update_rx` receives game-state snapshots from `Game` (via `update_tx`)
+/// - `start_game_tx` is sent a [`GameRequest`] each time the user confirms a new
+///   game in the modal; the game-loop thread in `main` owns the receiving end
 pub struct TuiRenderer;
 
 const POLL_TIMEOUT: u64 = 20; // ms
@@ -66,14 +78,12 @@ const POLL_TIMEOUT: u64 = 20; // ms
 impl TuiRenderer {
     /// Start the main TUI event loop.
     /// Returns the first error encountered, if any occur before the game is quitted.
-    ///
-    /// It is the caller's responsibility to pass the other ends of the provided channels to their proper destinations.
     pub fn run(
         &mut self,
         update_rx: Receiver<GameUpdate>,
-        move_tx: Sender<Position>,
+        start_game_tx: Sender<GameRequest>,
     ) -> anyhow::Result<()> {
-        let mut model = Model::new(update_rx, move_tx)?;
+        let mut model = Model::new(update_rx, start_game_tx)?;
         model.view(); // initial draw
 
         while !model.quit {

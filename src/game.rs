@@ -1,4 +1,5 @@
 mod board;
+mod config;
 mod mark;
 mod r#move;
 mod result;
@@ -6,6 +7,7 @@ use std::sync::mpsc::Sender;
 
 // re-export these for easier access by other modules
 pub use board::{Board, Position};
+pub use config::{GameConfig, OpponentKind};
 pub use mark::Mark;
 pub use r#move::Move;
 pub use result::GameResult;
@@ -16,13 +18,13 @@ use crate::{player::Player, renderer::GameUpdate};
 
 const NUM_PLAYERS: usize = 2;
 
-pub struct Game<'a> {
+pub struct Game {
     /// The current turn number (starting from 0).
     turn: usize,
     /// The current state of the game board.
     board: Board,
     /// The players participating in the game.
-    players: [&'a mut dyn Player; NUM_PLAYERS],
+    players: [Box<dyn Player>; NUM_PLAYERS],
     /// The index of the player whose turn it is to play.
     turn_player: usize,
     /// The sending end of the channel used to send the current board state to the renderer.
@@ -31,12 +33,12 @@ pub struct Game<'a> {
     pub is_finished: bool,
 }
 
-impl<'a> Game<'a> {
-    /// Creates a new game with the given players.
+impl Game {
+    /// Creates a new game with the given players, who will take turns in the given order.
     ///
     /// Returns an error if 2 players share the same mark.
     pub fn new(
-        players: [&'a mut dyn Player; NUM_PLAYERS],
+        players: [Box<dyn Player>; NUM_PLAYERS],
         update_tx: Sender<GameUpdate>,
     ) -> Result<Self, anyhow::Error> {
         // yes this is O(n^2) but n is small and this is only called once so it's fiiiiine
@@ -121,7 +123,7 @@ mod tests {
 
     use super::*;
     use crate::game::{board::Position, mark::Mark};
-    use std::sync::mpsc::{TryRecvError, channel};
+    use std::sync::mpsc::channel;
 
     /// A dummy player that always makes the same moves.
     struct DumbPlayer {
@@ -139,25 +141,25 @@ mod tests {
 
     #[test]
     fn test_game_play_move() {
-        let p1 = &mut DumbPlayer {
+        let p1 = DumbPlayer {
             preset_move: (0, 0),
             mark: Mark::X,
         };
-        let p2 = &mut DumbPlayer {
+        let p2 = DumbPlayer {
             preset_move: (0, 1),
             mark: Mark::O,
         };
 
         let (board_tx, board_rx) = channel::<GameUpdate>();
-        let mut game = Game::new([p1, p2], board_tx).unwrap();
+        let mut game = Game::new([Box::new(p1), Box::new(p2)], board_tx).unwrap();
 
         let new_board = array![[None, None, None], [None, None, None], [None, None, None],];
         assert_eq!(game.board.grid(), new_board);
         assert!(
             board_rx
                 .try_recv()
-                .is_err_and(|b| matches!(b, TryRecvError::Empty)),
-            "Game should not send initial board state on creation"
+                .is_ok_and(|b| matches!(b, GameUpdate::Initial(board) if board.grid() == new_board)),
+            "Game should send initial board state on creation"
         );
 
         let new_board = array![
@@ -200,17 +202,17 @@ mod tests {
 
     #[test]
     fn test_game_finish_game() {
-        let p1 = &mut DumbPlayer {
+        let p1 = DumbPlayer {
             preset_move: (0, 0),
             mark: Mark::X,
         };
-        let p2 = &mut DumbPlayer {
+        let p2 = DumbPlayer {
             preset_move: (1, 0),
             mark: Mark::O,
         };
 
         let (board_tx, board_rx) = channel::<GameUpdate>();
-        let mut game = Game::new([p1, p2], board_tx).unwrap();
+        let mut game = Game::new([Box::new(p1), Box::new(p2)], board_tx).unwrap();
 
         // discard initial board state
         board_rx

@@ -1,4 +1,4 @@
-use ratatui::{Frame, layout::Rect};
+use ratatui::{Frame, layout::Rect, widgets::Clear};
 use tuirealm::{
     command::{Cmd, CmdResult},
     component::Component,
@@ -7,16 +7,6 @@ use tuirealm::{
 };
 
 use crate::game::Mark;
-
-/// Clear the current drawing area.
-fn clear_area(frame: &mut Frame, area: Rect) {
-    let buf = frame.buffer_mut();
-    for y in area.y..area.y.saturating_add(area.height) {
-        for x in area.x..area.x.saturating_add(area.width) {
-            buf[(x, y)].set_char(' ');
-        }
-    }
-}
 
 fn draw_centered(ch: char, frame: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
@@ -34,7 +24,7 @@ pub struct CellComponent {
 
 impl Component for CellComponent {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
-        clear_area(frame, area);
+        frame.render_widget(Clear, area);
 
         match self.mark {
             Some(Mark::X) => {

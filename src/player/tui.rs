@@ -1,10 +1,8 @@
-use anyhow::Context;
-
 use crate::{
     game::{Mark, Position},
     player::Player,
 };
-use std::sync::mpsc::{self, RecvError};
+use std::sync::mpsc;
 
 /// A `TuiPlayer` represents a human player interacting through the TUI.
 ///
@@ -16,7 +14,7 @@ pub struct TuiPlayer {
     move_rx: mpsc::Receiver<Position>,
 }
 
-/// Error returned when the TUI connection is closed (player quit).
+/// Error returned when the TUI connection is closed.
 #[derive(Debug)]
 pub struct PlayerDisconnected;
 

@@ -6,6 +6,9 @@ pub enum Id {
     /// Expects to receive a square area to place the cells.
     Board,
 
-    /// A sidebar containing options, sttatus text, and other non-board information.
+    /// A sidebar containing options, status text, and other non-board information.
     Sidebar,
+
+    /// The "New Game" configuration popup, overlaying the bottom half of the sidebar.
+    NewGameModal,
 }

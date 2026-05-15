@@ -1,4 +1,4 @@
-use crate::game::Position;
+use crate::game::{GameConfig, Position};
 use crate::renderer::GameUpdate;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -13,8 +13,12 @@ pub enum Message {
     FocusSidebar,
     /// Move keyboard focus back to the board.
     FocusBoard,
-    /// Request to start a new game (modal config not yet implemented).
-    NewGame,
+    /// Open the new game configuration modal.
+    OpenNewGameModal,
+    /// Start a new game with the given configuration.
+    StartGame(GameConfig),
+    /// Close the current modal and return to the menu screen.
+    CloseModal,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]

@@ -11,11 +11,11 @@ use tuirealm::{
     component::{AppComponent, Component},
     event::{Event, Key, KeyEvent},
     props::{AttrValue, Attribute, QueryResult},
-    state::{State, StateValue},
+    state::{State},
 };
 
 use crate::{
-    game::{Board, GameResult, Move, Position},
+    game::{Board, Move, Position},
     renderer::{
         GameUpdate,
         components::cell::CellComponent,
@@ -194,6 +194,11 @@ impl AppComponent<Message, UserEvent> for AppBoardComponent {
         match ev {
             Event::Keyboard(ke) => self.handle_key_event(ke),
 
+            Event::User(UserEvent::GameUpdated(GameUpdate::Initial(board))) => {
+                self.component.board = board.clone();
+                self.component.selected_cell = (0, 0);
+                Some(Message::Redraw)
+            }
             Event::User(UserEvent::GameUpdated(GameUpdate::Move(Move { position, mark }))) => {
                 self.component.board.set_mark(*position, *mark);
                 Some(Message::Redraw)

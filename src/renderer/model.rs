@@ -1,22 +1,17 @@
 use ratatui::layout::{Constraint, Layout, Margin, Size};
-use ratatui::text::Line;
-use ratatui::widgets::Paragraph;
-use ratatui::{CompletedFrame, Frame};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
-use tuirealm::terminal::TerminalResult;
 use tuirealm::{
     application::Application,
     listener::EventListenerCfg,
-    state::{State, StateValue},
     subscription::{EventClause, Sub, SubClause},
     terminal::{CrosstermTerminalAdapter, TerminalAdapter},
 };
 
 use crate::{
-    game::{Board, Mark, Move, Position},
+    game::{Board, Move, Position},
     renderer::{
-        AppBoardComponent, AppSidebarComponent, GameUpdate,
+        AppBoardComponent, AppNewGameModal, AppSidebarComponent, GameRequest, GameUpdate,
         id::Id,
         message::{Message, UserEvent},
         port::GameUpdatePort,
@@ -33,14 +28,17 @@ pub struct Model {
     pub quit: bool,
     /// Whether the application should be redrawn.
     pub redraw: bool,
-    /// The underlying connection to the main game thread, to which move information will be sent.
-    move_tx: mpsc::Sender<Position>,
+    /// Sends a new [`GameRequest`] to the game-loop thread whenever the user starts a game.
+    start_game_tx: Sender<GameRequest>,
+    /// The sending end of the current game's move channel.
+    /// `None` when no game has been started yet.
+    move_tx: Option<Sender<Position>>,
 }
 
 impl Model {
     pub fn new(
         update_rx: Receiver<GameUpdate>,
-        move_tx: Sender<Position>,
+        start_game_tx: Sender<GameRequest>,
     ) -> Result<Self, anyhow::Error> {
         let mut adapter = CrosstermTerminalAdapter::new()?;
         // NB: This is REQUIRED for proper input handling (i wish the docs mentioned this...)
@@ -57,14 +55,13 @@ impl Model {
 
         let board = Board::new(ndarray::Array2::from_elem((3, 3), None));
         // Subscribe the board to game-update user events so it receives them
-        // even when the sidebar has focus.
-        // Keyboard events reach it only when focused.
+        // even when the sidebar has focus. Keyboard events reach it only when focused.
         app.mount(
             Id::Board,
             Box::new(AppBoardComponent::new(board)),
             vec![Sub::new(
                 EventClause::Discriminant(UserEvent::GameUpdated(GameUpdate::Move(
-                    Move::default()
+                    Move::default(),
                 ))),
                 SubClause::Always,
             )],
@@ -82,7 +79,8 @@ impl Model {
             terminal: adapter,
             quit: false,
             redraw: false,
-            move_tx,
+            start_game_tx,
+            move_tx: None,
         })
     }
 
@@ -90,7 +88,9 @@ impl Model {
     pub fn update(&mut self, msg: Option<Message>) -> Option<Message> {
         match msg? {
             Message::MoveMade(pos) => {
-                let _ = self.move_tx.send(pos);
+                if let Some(tx) = &self.move_tx {
+                    let _ = tx.send(pos);
+                }
                 None
             }
             Message::Redraw => None,
@@ -107,9 +107,33 @@ impl Model {
                 let _ = self.app.active(&Id::Board);
                 Some(Message::Redraw)
             }
-            Message::NewGame => {
-                // TODO: Open player/difficulty configuration modal
-                None
+            Message::OpenNewGameModal => {
+                if !self.app.mounted(&Id::NewGameModal) {
+                    let _ = self.app.mount(
+                        Id::NewGameModal,
+                        Box::new(AppNewGameModal::new()),
+                        vec![],
+                    );
+                }
+                let _ = self.app.active(&Id::NewGameModal);
+                Some(Message::Redraw)
+            }
+            Message::StartGame(config) => {
+                let _ = self.app.umount(&Id::NewGameModal);
+                let _ = self.app.active(&Id::Board);
+
+                // Replace the move channel so the old TuiPlayer (if any) detects
+                // disconnection and exits, then start the new game.
+                let (move_tx, move_rx) = mpsc::channel::<Position>();
+                self.move_tx = Some(move_tx);
+                let _ = self.start_game_tx.send(GameRequest { config, move_rx });
+
+                Some(Message::Redraw)
+            }
+            Message::CloseModal => {
+                let _ = self.app.umount(&Id::NewGameModal);
+                let _ = self.app.active(&Id::Sidebar);
+                Some(Message::Redraw)
             }
         }
     }
@@ -117,6 +141,7 @@ impl Model {
     /// Render the current state of the model to the terminal.
     /// This should be called after any update that changes the model's state, and will trigger a redraw of the UI.
     pub fn view(&mut self) {
+        let modal_open = self.app.mounted(&Id::NewGameModal);
         self.terminal
             .draw(|frame| {
                 let [board_area, sidebar_area] = Layout::horizontal([
@@ -133,6 +158,16 @@ impl Model {
 
                 self.app.view(&Id::Board, frame, squared);
                 self.app.view(&Id::Sidebar, frame, sidebar_area);
+
+                if modal_open {
+                    // Overlay the modal on the bottom half of the sidebar.
+                    let [_, modal_area] = Layout::vertical([
+                        Constraint::Ratio(1, 2),
+                        Constraint::Ratio(1, 2),
+                    ])
+                    .areas(sidebar_area);
+                    self.app.view(&Id::NewGameModal, frame, modal_area);
+                }
             })
             .expect("terminal should be capable of being drawn to");
     }

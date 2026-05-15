@@ -18,33 +18,50 @@ use crate::renderer::message::{Message, UserEvent};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SidebarOption {
     /// Open a new game. Pulls up a modal to configure players/difficulty.
-    NewGame,
+    NewGame = 0,
     /// Forcibly quit the application.
-    Quit,
+    Quit = 1,
 }
 
 impl SidebarOption {
-    const ALL: [Self; 2] = [Self::NewGame, Self::Quit];
+    const ALL: [SidebarOption; 2] = [SidebarOption::NewGame, SidebarOption::Quit];
 
-    fn label(self) -> &'static str {
+    /// Obtain the next sidebar option in numerical order.
+    fn next(&self) -> Self {
         match self {
-            Self::NewGame => "New Game",
-            Self::Quit => "Quit",
+            SidebarOption::NewGame => SidebarOption::Quit,
+            SidebarOption::Quit => SidebarOption::NewGame,
         }
     }
 
-    fn index(self) -> usize {
+    /// Obtain the previous sidebar option in numerical order.
+    fn prev(&self) -> Self {
         match self {
-            Self::NewGame => 0,
-            Self::Quit => 1,
+            SidebarOption::NewGame => SidebarOption::Quit,
+            SidebarOption::Quit => SidebarOption::NewGame,
         }
-    }
-
-    fn from_index(i: usize) -> Self {
-        Self::ALL[i]
     }
 }
 
+impl std::fmt::Display for SidebarOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SidebarOption::NewGame => write!(f, "New Game"),
+            SidebarOption::Quit => write!(f, "Quit"),
+        }
+    }
+}
+
+impl From<SidebarOption> for Message {
+    fn from(value: SidebarOption) -> Self {
+        match value {
+            SidebarOption::NewGame => Message::OpenNewGameModal,
+            SidebarOption::Quit => Message::AppQuit,
+        }
+    }
+}
+
+/// A [`SidebarComponent`] is responsible for managing the right sidebar and its various options.
 struct SidebarComponent {
     selected_option: SidebarOption,
     focused: bool,
@@ -87,7 +104,7 @@ impl Component for SidebarComponent {
                 };
                 let prefix = if is_selected { "» " } else { "  " };
                 ListItem::new(Line::from(Span::styled(
-                    format!("{}{}", prefix, opt.label()),
+                    format!("{}{}", prefix, opt),
                     style,
                 )))
             })
@@ -98,7 +115,8 @@ impl Component for SidebarComponent {
 
     fn attr(&mut self, attr: Attribute, val: AttrValue) {
         if attr == Attribute::Focus
-        && let AttrValue::Flag(focused) = val {
+            && let AttrValue::Flag(focused) = val
+        {
             self.focused = focused;
         }
     }
@@ -106,16 +124,11 @@ impl Component for SidebarComponent {
     fn perform(&mut self, cmd: Cmd) -> CmdResult {
         match cmd {
             Cmd::Move(Direction::Up) => {
-                let idx = self.selected_option.index();
-                self.selected_option = SidebarOption::from_index(
-                    (idx + SidebarOption::ALL.len() - 1) % SidebarOption::ALL.len(),
-                );
+                self.selected_option = self.selected_option.prev();
                 CmdResult::Changed(self.state())
             }
             Cmd::Move(Direction::Down) => {
-                let idx = self.selected_option.index();
-                self.selected_option =
-                    SidebarOption::from_index((idx + 1) % SidebarOption::ALL.len());
+                self.selected_option = self.selected_option.next();
                 CmdResult::Changed(self.state())
             }
             Cmd::Submit => CmdResult::Submit(self.state()),
@@ -132,6 +145,7 @@ impl Component for SidebarComponent {
     }
 }
 
+/// An [`AppSidebarComponent`] is a thin wrapper around a [`SidebarComponent`].
 #[derive(Component)]
 pub struct AppSidebarComponent {
     component: SidebarComponent,
@@ -163,13 +177,12 @@ impl AppSidebarComponent {
             KeyEvent {
                 code: Key::Enter | Key::Char(' '),
                 ..
-            } => match self.perform(Cmd::Submit) {
-                CmdResult::Submit(_) => match self.component.selected_option {
-                    SidebarOption::NewGame => Some(Message::NewGame),
-                    SidebarOption::Quit => Some(Message::AppQuit),
-                },
-                _ => None,
-            },
+            } => {
+                let CmdResult::Submit(_) = self.perform(Cmd::Submit) else {
+                    return None;
+                };
+                Some(self.component.selected_option.into())
+            }
             KeyEvent {
                 code: Key::Tab | Key::Esc,
                 ..

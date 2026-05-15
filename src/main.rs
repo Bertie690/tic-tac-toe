@@ -1,9 +1,9 @@
-use std::sync::mpsc::{self, RecvError};
+use std::sync::mpsc;
 
 use crate::{
-    game::{Game, Mark, Position},
-    player::{Minimax, TuiPlayer},
-    renderer::{GameUpdate, TuiRenderer},
+    game::{Game, OpponentKind},
+    player::{Minimax, Random, TuiPlayer},
+    renderer::{GameRequest, GameUpdate, TuiRenderer},
 };
 
 pub mod game;
@@ -11,30 +11,57 @@ pub mod player;
 pub mod renderer;
 
 fn main() -> anyhow::Result<()> {
-    let mark = Mark::X;
-
     let (update_tx, update_rx) = mpsc::channel::<GameUpdate>();
-    let (move_tx, move_rx) = mpsc::channel::<Position>();
+    let (start_game_tx, start_game_rx) = mpsc::channel::<GameRequest>();
 
-    // Pass the ends of the channel to the renderer and player:
-    let mut renderer = TuiRenderer {};
-    let mut player = TuiPlayer::new(mark, move_rx);
-    let mut cpu = Minimax::new(mark.opposite());
-
-    // Start the game thread in the background
+    // Game loop: waits for a GameRequest, runs the game, then loops.
+    // Terminated when `start_game_tx` is dropped (i.e. the renderer quits).
     let thread = std::thread::spawn(move || -> anyhow::Result<()> {
-        let mut game = Game::new([&mut player, &mut cpu], update_tx)
-            .expect("game initialization should succeed");
+        loop {
+            let GameRequest { config, move_rx } = match start_game_rx.recv() {
+                Ok(req) => req,
+                // renderer has exited and dropped its sender
+                Err(_) => return Ok(()),
+            };
 
-        while !game.is_finished {
-            game.play_move()?
+            let mark = config.player_mark;
+            let player = TuiPlayer::new(mark, move_rx);
+            let cpu: Box<dyn crate::player::Player> = match config.opponent {
+                OpponentKind::Minimax => Box::new(Minimax::new(mark.opposite())),
+                OpponentKind::Random => Box::new(Random::new(mark.opposite())),
+            };
+            let players = if config.player_first {
+                [Box::new(player), cpu]
+            } else {
+                [cpu, Box::new(player)]
+            };
+
+            let mut game =
+                Game::new(players, update_tx.clone()).expect("game initialization should succeed");
+
+            loop {
+                match game.play_move() {
+                    Ok(()) if game.is_finished => break,
+                    Ok(()) => {}
+                    // The move channel was dropped — the renderer started a new
+                    // game or quit. Either way, cleanly exit this game.
+                    Err(e)
+                        if e.downcast_ref::<crate::player::PlayerDisconnected>()
+                            .is_some() =>
+                    {
+                        break;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            // Loop back to waiting for the next GameRequest.
         }
-        Ok(())
     });
 
-    renderer.run(update_rx, move_tx)?;
+    let mut renderer = TuiRenderer {};
+    renderer.run(update_rx, start_game_tx)?;
 
-    // explicitly disregard errors produced from a connection closure
+    // The renderer has exited. Wait for the game thread.
     match thread.join() {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => {

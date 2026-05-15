@@ -19,7 +19,7 @@ impl Minimax {
 
 impl Player for Minimax {
     /// choose_move implements the minimax algorithm using alpha-beta pruning.
-    fn choose_move(&mut self, board: &Board) -> Position {
+    fn choose_move(&mut self, board: &Board) -> anyhow::Result<Position> {
         minimax_move(board, self.mark)
     }
 
@@ -28,17 +28,17 @@ impl Player for Minimax {
     }
 }
 
-fn minimax_move(board: &Board, cpu_mark: Mark) -> Position {
+fn minimax_move(board: &Board, cpu_mark: Mark) -> anyhow::Result<Position> {
     board
         .available_moves()
         .into_iter()
         .max_by_key(|&pos| {
             let b = &mut board.clone();
-            b.play_mark(pos, cpu_mark);
+            b.set_mark(pos, cpu_mark);
 
             alpha_beta(b, cpu_mark, i32::MIN, i32::MAX, false)
         })
-        .expect("choose_move should not be called on a filled board")
+        .ok_or_else(|| anyhow::anyhow!("minimax has no valid moves"))
 }
 
 /// alpha_beta implements the minimax algorithm with alpha-beta pruning,
@@ -69,7 +69,7 @@ fn alpha_beta(
     // check each position, stopping early if we hit a guaranteed win/loss
     for pos in board.available_moves() {
         let b = &mut board.clone();
-        b.play_mark(pos, current);
+        b.set_mark(pos, current);
 
         let score = alpha_beta(&b, cpu_mark, alpha, beta, !is_maximizing);
 
@@ -103,7 +103,7 @@ mod tests {
             [None, None, None],
         ]);
 
-        assert_eq!(minimax_move(&board, Mark::X), (0, 2));
-        assert_eq!(minimax_move(&board, Mark::O), (1, 2));
+        assert!(matches!(minimax_move(&board, Mark::X), Ok((0, 2))));
+        assert!(matches!(minimax_move(&board, Mark::O), Ok((1, 2))));
     }
 }

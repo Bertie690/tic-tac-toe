@@ -1,6 +1,7 @@
 /// A Mark represents a player's move on the board, either an X or an O.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mark {
+    #[default]
     X = 1,
     O = -1,
 }

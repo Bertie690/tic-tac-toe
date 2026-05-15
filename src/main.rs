@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::sync::mpsc::{self, RecvError};
 
 use crate::{
     game::{Game, Mark, Position},
@@ -11,8 +11,7 @@ pub mod player;
 pub mod renderer;
 
 fn main() -> anyhow::Result<()> {
-    // TODO: Create title screen to allow selecting player mark/diff level
-    let mark = Mark::X; // TODO: get from title screen
+    let mark = Mark::X;
 
     let (update_tx, update_rx) = mpsc::channel::<GameUpdate>();
     let (move_tx, move_rx) = mpsc::channel::<Position>();
@@ -35,9 +34,27 @@ fn main() -> anyhow::Result<()> {
 
     renderer.run(update_rx, move_tx)?;
 
-    thread
-        .join()
-        .map_err(|v| anyhow::anyhow!("Game thread panicked: {:?}", v))??;
-
-    Ok(())
+    // explicitly disregard errors produced from a connection closure
+    match thread.join() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            if e.downcast_ref::<crate::player::PlayerDisconnected>()
+                .is_some()
+            {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
+        Err(panic_payload) => {
+            if let Some(e) = panic_payload.downcast_ref::<anyhow::Error>() {
+                if e.downcast_ref::<crate::player::PlayerDisconnected>()
+                    .is_some()
+                {
+                    return Ok(());
+                }
+            }
+            Err(anyhow::anyhow!("Game thread panicked: {:?}", panic_payload))
+        }
+    }
 }

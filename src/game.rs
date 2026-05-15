@@ -1,12 +1,13 @@
 mod board;
 mod mark;
+mod r#move;
 mod result;
-
 use std::sync::mpsc::Sender;
 
 // re-export these for easier access by other modules
 pub use board::{Board, Position};
 pub use mark::Mark;
+pub use r#move::Move;
 pub use result::GameResult;
 
 use ndarray::Array2;
@@ -54,9 +55,6 @@ impl<'a> Game<'a> {
 
         // send the initial board state to the renderer
         let board = Board::new(Array2::from_elem((3, 3), None));
-        update_tx.send(GameUpdate::Move {
-            board: board.clone(),
-        })?;
         Ok(Self {
             turn: 0,
             board,
@@ -68,17 +66,22 @@ impl<'a> Game<'a> {
     }
 
     /// Execute a single turn of the game.
-    pub fn play_move(&mut self) -> Result<(), anyhow::Error> {
+    pub fn play_move(&mut self) -> anyhow::Result<()> {
         self.verify_unfinished()?;
 
         let current_player = &mut self.players[self.turn_player];
-        let pos = current_player.choose_move(&self.board);
-        self.board.play_mark(pos, current_player.get_mark().into());
+        let mark = current_player.get_mark();
+
+        let pos = current_player.choose_move(&self.board)?;
+
+        self.board.set_mark(pos, current_player.get_mark().into());
         self.turn += 1;
+
         self.turn_player = (self.turn_player + 1) % NUM_PLAYERS;
-        self.update_tx.send(GameUpdate::Move {
-            board: self.board.clone(),
-        })?;
+        self.update_tx.send(GameUpdate::Move(Move {
+            mark,
+            position: pos,
+        }))?;
 
         let result = self.board.state();
         if result == GameResult::Ongoing {
@@ -118,7 +121,7 @@ mod tests {
 
     use super::*;
     use crate::game::{board::Position, mark::Mark};
-    use std::sync::mpsc::channel;
+    use std::sync::mpsc::{TryRecvError, channel};
 
     /// A dummy player that always makes the same moves.
     struct DumbPlayer {
@@ -126,8 +129,8 @@ mod tests {
         preset_move: Position,
     }
     impl Player for DumbPlayer {
-        fn choose_move(&mut self, _board: &Board) -> Position {
-            self.preset_move
+        fn choose_move(&mut self, _board: &Board) -> anyhow::Result<Position> {
+            Ok(self.preset_move)
         }
         fn get_mark(&self) -> Mark {
             self.mark
@@ -149,12 +152,12 @@ mod tests {
         let mut game = Game::new([p1, p2], board_tx).unwrap();
 
         let new_board = array![[None, None, None], [None, None, None], [None, None, None],];
-        assert_eq!(game.board.grid(), new_board,);
+        assert_eq!(game.board.grid(), new_board);
         assert!(
-            board_rx.try_recv().is_ok_and(
-                |b| matches!(b, GameUpdate::Move { board } if board.grid() == new_board)
-            ),
-            "Game should send the initial board state to the renderer on creation"
+            board_rx
+                .try_recv()
+                .is_err_and(|b| matches!(b, TryRecvError::Empty)),
+            "Game should not send initial board state on creation"
         );
 
         let new_board = array![
@@ -167,10 +170,11 @@ mod tests {
             .expect("connection to renderer shouldn't fail mid-game");
         assert_eq!(game.board.grid(), new_board,);
         assert!(
-            board_rx.try_recv().is_ok_and(
-                |b| matches!(b, GameUpdate::Move { board } if board.grid() == new_board)
-            ),
-            "Game should send the updated board state to the renderer after each move"
+            board_rx
+                .try_recv()
+                .is_ok_and(|b| matches!(b, GameUpdate::Move (Move {position, mark} )
+                    if position == (0, 0) && mark == Mark::X)),
+            "Game should send the move info to the renderer after each move"
         );
         assert_eq!(game.turn, 1);
         assert_eq!(game.turn_player, 1);
@@ -184,10 +188,11 @@ mod tests {
             .expect("connection to renderer shouldn't fail mid-game");
         assert_eq!(game.board.grid(), new_board);
         assert!(
-            board_rx.try_recv().is_ok_and(
-                |b| matches!(b, GameUpdate::Move { board } if board.grid() == new_board)
-            ),
-            "Game should send the updated board state to the renderer after each move"
+            board_rx
+                .try_recv()
+                .is_ok_and(|b| matches!(b, GameUpdate::Move (Move {position, mark} )
+                    if position == (0, 1) && mark == Mark::O)),
+            "Game should send the move info to the renderer after each move"
         );
         assert_eq!(game.turn, 2);
         assert_eq!(game.turn_player, 0);

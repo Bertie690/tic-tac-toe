@@ -11,12 +11,14 @@ mod tui;
 pub use minimax::Minimax;
 pub use random::Random;
 pub use tui::TuiPlayer;
+pub use tui::PlayerDisconnected;
 
 /// A `Player` represents an agent in the game capable of choosing their next move.
 pub trait Player {
     /// Choose a move based on the current state of the board.
-    /// Should always be called with a board that has at least one available move.
-    fn choose_move(&mut self, board: &Board) -> Position;
+    ///
+    /// Callers should return None if no valid moves can be made.
+    fn choose_move(&mut self, board: &Board) -> anyhow::Result<Position>;
 
     /// Retrieve the mark that this strategy uses (X or O).
     fn get_mark(&self) -> Mark;

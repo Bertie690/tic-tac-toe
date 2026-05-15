@@ -6,7 +6,8 @@ mod message;
 mod model;
 mod port;
 
-pub use components::board::BoardComponent;
+pub use components::board::AppBoardComponent;
+pub use components::sidebar::AppSidebarComponent;
 
 use std::{
     sync::mpsc::{self, Receiver, Sender},
@@ -16,15 +17,21 @@ use std::{
 use tuirealm::application::PollStrategy;
 
 use crate::{
-    game::{Board, GameResult, Position},
+    game::{Board, GameResult, Move, Position},
     renderer::model::Model,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A `GameUpdate` represents an update to the game state that the renderer should display.
 pub enum GameUpdate {
-    Move { board: Board },
-    Finished { board: Board, result: GameResult },
+    Move(
+        /// The move having been made.
+        Move,
+    ),
+    Finished {
+        board: Board,
+        result: GameResult,
+    },
 }
 
 pub trait Renderer {
@@ -72,7 +79,7 @@ impl TuiRenderer {
         while !model.quit {
             match model
                 .app
-                .tick(PollStrategy::Once(Duration::from_millis(POLL_TIMEOUT)))
+                .tick(PollStrategy::TryFor(Duration::from_millis(POLL_TIMEOUT)))
             {
                 Ok(msgs) => {
                     for msg in msgs {

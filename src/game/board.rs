@@ -34,7 +34,7 @@ impl Board {
 
     /// Set the mark at the given position.
     /// Does not perform any error checking for whether the move is valid.
-    pub fn play_mark(&mut self, (row, col): Position, mark: Mark) {
+    pub fn set_mark(&mut self, (row, col): Position, mark: Mark) {
         // array is indexed by (row, col)
         self.grid[(row, col)] = Some(mark);
     }

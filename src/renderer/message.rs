@@ -9,9 +9,16 @@ pub enum Message {
     /// Force the screen to redraw itself.
     Redraw,
     AppQuit,
+    /// Move keyboard focus to the sidebar.
+    FocusSidebar,
+    /// Move keyboard focus back to the board.
+    FocusBoard,
+    /// Request to start a new game (modal config not yet implemented).
+    NewGame,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum UserEvent {
+    GameStarted,
     GameUpdated(GameUpdate),
 }

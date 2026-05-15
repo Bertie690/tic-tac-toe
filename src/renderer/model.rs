@@ -1,19 +1,22 @@
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Margin, Size};
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
+use ratatui::{CompletedFrame, Frame};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
+use tuirealm::terminal::TerminalResult;
 use tuirealm::{
     application::Application,
     listener::EventListenerCfg,
     state::{State, StateValue},
+    subscription::{EventClause, Sub, SubClause},
     terminal::{CrosstermTerminalAdapter, TerminalAdapter},
 };
 
 use crate::{
-    game::{Board, Position},
+    game::{Board, Mark, Move, Position},
     renderer::{
-        BoardComponent, GameUpdate,
+        AppBoardComponent, AppSidebarComponent, GameUpdate,
         id::Id,
         message::{Message, UserEvent},
         port::GameUpdatePort,
@@ -39,23 +42,44 @@ impl Model {
         update_rx: Receiver<GameUpdate>,
         move_tx: Sender<Position>,
     ) -> Result<Self, anyhow::Error> {
-        let mut terminal = CrosstermTerminalAdapter::new()?;
+        let mut adapter = CrosstermTerminalAdapter::new()?;
+        // NB: This is REQUIRED for proper input handling (i wish the docs mentioned this...)
+        adapter.enable_raw_mode()?;
+        adapter.enter_alternate_screen()?;
 
-        terminal.clear_screen()?;
         let port = GameUpdatePort::new(update_rx);
         let mut app = Application::init(
             EventListenerCfg::default()
-                .crossterm_input_listener(Duration::from_millis(1), 10)
+                .tick_interval(Duration::from_millis(20))
+                .crossterm_input_listener(Duration::from_millis(20), 50)
                 .add_port(Box::new(port), Duration::from_millis(20), 1),
         );
 
         let board = Board::new(ndarray::Array2::from_elem((3, 3), None));
-        app.mount(Id::Board, Box::new(BoardComponent::new(board)), vec![])?;
-        app.active(&Id::Board)?;
+        // Subscribe the board to game-update user events so it receives them
+        // even when the sidebar has focus.
+        // Keyboard events reach it only when focused.
+        app.mount(
+            Id::Board,
+            Box::new(AppBoardComponent::new(board)),
+            vec![Sub::new(
+                EventClause::Discriminant(UserEvent::GameUpdated(GameUpdate::Move(
+                    Move::default()
+                ))),
+                SubClause::Always,
+            )],
+        )?;
+        // The sidebar only needs keyboard events, which it receives only when focused.
+        app.mount(
+            Id::Sidebar,
+            Box::new(AppSidebarComponent::new()),
+            vec![],
+        )?;
+        app.active(&Id::Sidebar)?;
 
         Ok(Self {
             app,
-            terminal,
+            terminal: adapter,
             quit: false,
             redraw: false,
             move_tx,
@@ -72,7 +96,19 @@ impl Model {
             Message::Redraw => None,
             Message::AppQuit => {
                 self.quit = true;
-                self.terminal.clear_screen().ok()?;
+                self.terminal.restore().ok()?;
+                None
+            }
+            Message::FocusSidebar => {
+                let _ = self.app.active(&Id::Sidebar);
+                Some(Message::Redraw)
+            }
+            Message::FocusBoard => {
+                let _ = self.app.active(&Id::Board);
+                Some(Message::Redraw)
+            }
+            Message::NewGame => {
+                // TODO: Open player/difficulty configuration modal
                 None
             }
         }
@@ -82,29 +118,21 @@ impl Model {
     /// This should be called after any update that changes the model's state, and will trigger a redraw of the UI.
     pub fn view(&mut self) {
         self.terminal
-            .draw(|f| {
-                let [board_area, status_area, options_area] = Layout::vertical([
-                    Constraint::Fill(1),
-                    Constraint::Length(1),
-                    Constraint::Min(4),
+            .draw(|frame| {
+                let [board_area, sidebar_area] = Layout::horizontal([
+                    Constraint::Ratio(3, 5),
+                    Constraint::Ratio(2, 5),
                 ])
-                .areas(f.area());
-                self.app.view(&Id::Board, f, board_area);
+                .areas(frame.area());
 
-                let status_text = match self.app.state(&Id::Board) {
-                    Ok(State::Single(StateValue::String(msg))) => msg,
-                    _ => String::from("Game in progress"),
-                };
-                f.render_widget(Paragraph::new(Line::from(status_text)), status_area);
+                // Add a 1 character margin around the board and clamp it to a square, ensuring it is always a multiple of 3 for easy division
+                let board_with_margins = board_area.inner(Margin::new(1, 1));
+                let side_length = board_with_margins.width.min(board_with_margins.height);
+                let side_rounded = side_length - (side_length % 3);
+                let squared = board_with_margins.resize(Size::new(side_rounded, side_rounded));
 
-                f.render_widget(
-                    Paragraph::new(vec![
-                        Line::from("Arrows/WASD/HJKL: Move cursor"),
-                        Line::from("Enter/Space: Place mark"),
-                        Line::from("q/Esc: Quit"),
-                    ]),
-                    options_area,
-                );
+                self.app.view(&Id::Board, frame, squared);
+                self.app.view(&Id::Sidebar, frame, sidebar_area);
             })
             .expect("terminal should be capable of being drawn to");
     }

@@ -1,14 +1,11 @@
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 /// An `Id` represents a widget in the TUI, used for identification purposes.
 pub enum Id {
-    /// the 3×3 grid
+    /// The 3×3 grid of tiles.
+    ///
+    /// Expects to receive a square area to place the cells.
     Board,
 
-    // TODO: Implement these portions of the UI
-    /// A line of text displaying the previous move made (P2 placed O at (0, 2)).
-    /// Also displays game status and/or difficulty level.
-    Status,
-
-    /// A line of text holding menu option buttons like "Quit", "New Game", and so on.
-    Options,
+    /// A sidebar containing options, sttatus text, and other non-board information.
+    Sidebar,
 }

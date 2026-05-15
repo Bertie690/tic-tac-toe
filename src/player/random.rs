@@ -1,7 +1,6 @@
 use crate::{
     game::{
-        {Board, Position},
-        Mark,
+        Mark, {Board, Position},
     },
     player::Player,
 };
@@ -22,11 +21,10 @@ impl<'a> Random<'a> {
 }
 
 impl<'a> Player for Random<'a> {
-    /// choose_move selects a random move from the available moves on the board.
-    fn choose_move(&mut self, board: &Board) -> Position {
+    fn choose_move(&mut self, board: &Board) -> anyhow::Result<Position> {
         self.rng
             .choice(board.available_moves().collect::<Vec<_>>())
-            .expect("Board should have available moves when choose_move is called")
+            .ok_or_else(|| anyhow::anyhow!("No legal moves to perform!"))
     }
 
     fn get_mark(&self) -> Mark {

@@ -1,9 +1,8 @@
 use ndarray::Array2;
 use ratatui::layout::{Constraint, Layout};
-use std::sync::mpsc::{self, Receiver, Sender, channel};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
-use tuirealm::event::KeyEvent;
-use tuirealm::props::Attribute;
+use tuirealm::props::{AttrValue, Attribute};
 use tuirealm::{
     application::Application,
     listener::EventListenerCfg,
@@ -11,6 +10,7 @@ use tuirealm::{
     terminal::{CrosstermTerminalAdapter, TerminalAdapter},
 };
 
+use crate::renderer::components::redraw_on_resize::RedrawOnResizeComponent;
 use crate::{
     game::{Board, Move, Position},
     renderer::{
@@ -83,6 +83,13 @@ impl Model {
 
         // The sidebar only needs keyboard events, which it receives only when focused
         app.mount(Id::Sidebar, Box::new(AppSidebarComponent::new()), vec![])?;
+
+        app.mount(
+            Id::RedrawOnResize,
+            Box::new(RedrawOnResizeComponent),
+            vec![Sub::new(EventClause::WindowResize, SubClause::Always)],
+        )?;
+
         app.active(&Id::Sidebar)?;
 
         Ok(Self {
@@ -104,7 +111,19 @@ impl Model {
                 }
                 None
             }
-            Message::Redraw => None,
+            Message::InvalidMove(reason) => {
+                let _ = self.app.attr(
+                    &Id::Status,
+                    Attribute::Content,
+                    AttrValue::String(reason.into()),
+                );
+                Some(Message::Redraw)
+            }
+
+            Message::Redraw => {
+                self.redraw = true;
+                None
+            },
             Message::AppQuit => {
                 self.quit = true;
                 self.terminal.restore().ok()?;
@@ -159,7 +178,7 @@ impl Model {
 
                 // Split the left area into the board and a 2-line status area beneath
                 let [board_area, status_area] =
-                    Layout::vertical([Constraint::Min(3), Constraint::Length(2)]).areas(play_area);
+                    Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(play_area);
 
                 self.app.view(&Id::Board, frame, board_area);
                 self.app.view(&Id::Status, frame, status_area);

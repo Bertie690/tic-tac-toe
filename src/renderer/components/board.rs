@@ -19,7 +19,7 @@ use crate::{
     renderer::{
         GameUpdate,
         components::cell::CellComponent,
-        enums::{Message, UserEvent},
+        enums::{InvalidMoveReason, Message, UserEvent},
     },
 };
 
@@ -29,6 +29,9 @@ struct BoardComponent {
     selected_cell: Position,
     /// The [`CellComponent`]s that make up the board, stored to avoid re-creating them on page draw.
     cells: [[Box<CellComponent>; 3]; 3],
+
+    /// Whether to prevent input from being processed, such as when a game is not active.
+    prevent_input: bool,
 }
 
 impl BoardComponent {
@@ -37,8 +40,9 @@ impl BoardComponent {
 
         Self {
             board,
-            selected_cell: (0, 0),
+            selected_cell: (1, 1),
             cells,
+            prevent_input: false,
         }
     }
 
@@ -132,10 +136,17 @@ impl Component for BoardComponent {
             }
             Cmd::Submit => {
                 // do nothing if game over or already occupied
-                if self.board.grid()[self.selected_cell].is_some() {
-                    CmdResult::Invalid(Cmd::Submit)
+                // TODO: Send a message to the status bar?
+                if self.board.grid()[self.selected_cell].is_some() || self.prevent_input {
+                    let reason = if self.prevent_input {
+                        InvalidMoveReason::GameOver
+                    } else {
+                        InvalidMoveReason::CellOccupied
+                    };
+
+                    CmdResult::Invalid(Cmd::Custom(reason.into()))
                 } else {
-                    CmdResult::Submit(State::None)
+                    CmdResult::Submit(self.state())
                 }
             }
             _ => CmdResult::NoChange,
@@ -199,6 +210,13 @@ impl AppBoardComponent {
                 ..
             } => match self.perform(Cmd::Submit) {
                 CmdResult::Submit(_) => Some(Message::MoveMade(self.component.selected_cell)),
+                CmdResult::Invalid(Cmd::Custom(reason_str)) => {
+                    let Ok(reason) = InvalidMoveReason::try_from(reason_str) else {
+                        return None;
+                    };
+
+                    Some(Message::InvalidMove(reason))
+                }
                 _ => None,
             },
             _ => None,
@@ -213,7 +231,8 @@ impl AppComponent<Message, UserEvent> for AppBoardComponent {
 
             Event::User(UserEvent::GameUpdated(GameUpdate::Initial(board))) => {
                 self.component.board = board.clone();
-                self.component.selected_cell = (0, 0);
+                self.component.selected_cell = (1, 1); // center
+                self.component.prevent_input = false;
 
                 Some(Message::Redraw)
             }
@@ -224,6 +243,7 @@ impl AppComponent<Message, UserEvent> for AppBoardComponent {
             }
             Event::User(UserEvent::GameUpdated(GameUpdate::Finished { board, .. })) => {
                 self.component.board = board.clone();
+                self.component.prevent_input = true;
 
                 Some(Message::Redraw)
             }
@@ -261,7 +281,7 @@ mod tests {
     #[test]
     fn test_wasd_wraparound_from_origin() {
         let mut board = empty_board_component();
-        assert_eq!(board.component.selected_cell, (0, 0));
+        board.component.selected_cell = (0, 0);
 
         assert_eq!(press(&mut board, 'a'), Some(Message::Redraw));
         assert_eq!(board.component.selected_cell, (0, 2));
@@ -279,8 +299,8 @@ mod tests {
     #[test]
     fn test_wasd_wraparound_on_all_edges() {
         let mut board = empty_board_component();
-
         board.component.selected_cell = (1, 0);
+
         assert_eq!(press(&mut board, 'a'), Some(Message::Redraw));
         assert_eq!(board.component.selected_cell, (1, 2));
 

@@ -13,21 +13,33 @@ use tuirealm::{
     state::State,
 };
 
-use crate::{game::GameResult, renderer::{
-    GameUpdate,
-    enums::{Message, UserEvent},
-}};
+use crate::{
+    game::GameResult,
+    renderer::{
+        GameUpdate,
+        enums::{InvalidMoveReason, Message, UserEvent},
+    },
+};
 
 /// A small two-line component used to display messages pertaining to game state.
 ///
-/// Receives game update messages, but does not emit any itself.
+/// Receives game update messages, but does not emit any by itself.
+///
+/// Supports displaying a warning message for invalid moves by passing an [`Attribute::Content`] with an [`AttrValue::String`]
+/// holding the triggering [`InvalidMoveReason`].
 pub struct StatusComponent {
     message: String,
 
-    /// The warning message shown when Ctrl+C is pressed, if applicable.
+    /// The warning message with which to override the default message, if applicable.
     ///
     /// Set to [`None`] when any other key is pressed, and will override the regular message .
     warning_message: Option<String>,
+
+    /// Whether the last error message came from a Ctrl+C press.
+    /// If `true`, the next Ctrl+C will quit the app.
+    ///
+    /// Reset to `false` on any other key press.
+    warning_from_ctrl_c: bool,
 }
 
 impl StatusComponent {
@@ -35,6 +47,7 @@ impl StatusComponent {
         Self {
             message: String::new(),
             warning_message: None,
+            warning_from_ctrl_c: false,
         }
     }
 
@@ -64,9 +77,7 @@ impl Component for StatusComponent {
         let inner = block.inner(area);
         block.render(area, frame.buffer_mut());
 
-        let lines = vec![Line::from(Span::raw(" ")), self.get_display_line()];
-
-        frame.render_widget(Paragraph::new(lines), inner);
+        frame.render_widget(Paragraph::new(self.get_display_line()), inner);
     }
 
     fn perform(&mut self, _cmd: Cmd) -> CmdResult {
@@ -77,7 +88,29 @@ impl Component for StatusComponent {
         None
     }
 
-    fn attr(&mut self, _attr: Attribute, _val: AttrValue) {}
+    /// Handle incoming messages to update the status message or warning state.
+    fn attr(&mut self, attr: Attribute, val: AttrValue) {
+        if attr != Attribute::Content {
+            return;
+        }
+        let AttrValue::String(reason) = val else {
+            return;
+        };
+        let Ok(invalid_reason) = reason.try_into() else {
+            // should never happen
+            return;
+        };
+
+        match invalid_reason {
+            InvalidMoveReason::CellOccupied => {
+                self.warning_message = Some("Invalid move: Cell is already occupied!".to_string());
+            }
+            InvalidMoveReason::GameOver => {
+                self.warning_message = Some("Invalid move: Game is already over!".to_string());
+            }
+        }
+        self.warning_from_ctrl_c = false;
+    }
 
     fn state(&self) -> State {
         State::None
@@ -97,8 +130,8 @@ impl AppStatusComponent {
         }
     }
 
-    fn handle_user_event(&mut self, user_event: &GameUpdate) {
-        match user_event {
+    fn handle_game_update(&mut self, update: &GameUpdate) {
+        match update {
             GameUpdate::Initial(_) => {
                 self.component.set("New game started");
             }
@@ -126,25 +159,30 @@ impl AppComponent<Message, UserEvent> for AppStatusComponent {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Message> {
         match ev {
             Event::User(UserEvent::GameUpdated(update)) => {
-                self.handle_user_event(update);
+                self.handle_game_update(update);
                 Some(Message::Redraw)
             }
 
-            //
             Event::Keyboard(KeyEvent {
                 code: Key::Char('c'),
                 modifiers: KeyModifiers::CONTROL,
-            }) if self.component.warning_message.is_some() => Some(Message::AppQuit),
+            }) if self.component.warning_message.is_some()
+                && self.component.warning_from_ctrl_c =>
+            {
+                Some(Message::AppQuit)
+            }
             Event::Keyboard(KeyEvent {
                 code: Key::Char('c'),
                 modifiers: KeyModifiers::CONTROL,
-            }) if self.component.warning_message.is_none() => {
-                self.component.warning_message = Some(String::from("Press Ctrl+C again to quit"));
+            }) => {
+                self.component.warning_message = Some(String::from("Press Ctrl+C again to quit."));
+                self.component.warning_from_ctrl_c = true;
                 Some(Message::Redraw)
             }
             Event::Keyboard(_) => {
                 if self.component.warning_message.is_some() {
                     self.component.warning_message = None;
+                    self.component.warning_from_ctrl_c = false;
                     Some(Message::Redraw)
                 } else {
                     None

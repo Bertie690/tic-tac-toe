@@ -55,12 +55,12 @@ impl Board {
         // NB: inverting either one axis swaps the primary and secondary diagonals
         let mut transposed = self.grid.view();
         transposed.invert_axis(Axis(0));
-        let secondary_diagnonal = transposed.diag();
+        let secondary_diagonal = transposed.diag();
 
         let lines = rows
             .chain(cols)
             .chain(std::iter::once(primary_diagonal))
-            .chain(std::iter::once(secondary_diagnonal));
+            .chain(std::iter::once(secondary_diagonal));
 
         for line in lines {
             if let Some(&mark) = line.iter().flatten().next()

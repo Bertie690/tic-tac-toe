@@ -42,6 +42,12 @@ pub struct StatusComponent {
     warning_from_ctrl_c: bool,
 }
 
+impl Default for StatusComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StatusComponent {
     pub fn new() -> Self {
         Self {
@@ -121,6 +127,12 @@ impl Component for StatusComponent {
 #[derive(Component)]
 pub struct AppStatusComponent {
     component: StatusComponent,
+}
+
+impl Default for AppStatusComponent {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppStatusComponent {

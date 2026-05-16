@@ -29,7 +29,7 @@ pub struct Game {
     turn_player: usize,
     /// The sending end of the channel used to send the current board state to the renderer.
     update_tx: Sender<GameUpdate>,
-    /// Whether the game has finished. Used to prevent moves from being played after the game is over.
+    /// Whether the game has finished. Used to end the game loop and return to normal menu operations.
     pub is_finished: bool,
 }
 
@@ -77,7 +77,7 @@ impl Game {
 
         let pos = current_player.choose_move(&self.board)?;
 
-        self.board.set_mark(pos, current_player.get_mark().into());
+        self.board.set_mark(pos, current_player.get_mark());
         self.turn += 1;
 
         self.turn_player = (self.turn_player + 1) % NUM_PLAYERS;

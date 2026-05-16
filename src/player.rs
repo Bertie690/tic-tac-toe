@@ -10,8 +10,8 @@ mod tui;
 
 pub use minimax::Minimax;
 pub use random::Random;
-pub use tui::TuiPlayer;
 pub use tui::PlayerDisconnected;
+pub use tui::TuiPlayer;
 
 /// A `Player` represents an agent in the game capable of choosing their next move.
 pub trait Player {

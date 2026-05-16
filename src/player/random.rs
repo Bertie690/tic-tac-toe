@@ -15,7 +15,10 @@ pub struct Random {
 
 impl Random {
     pub fn new(mark: Mark) -> Self {
-        Self { mark, rng: Rng::new() }
+        Self {
+            mark,
+            rng: Rng::new(),
+        }
     }
 }
 

@@ -247,6 +247,12 @@ pub struct AppNewGameModal {
     component: NewGameModalComponent,
 }
 
+impl Default for AppNewGameModal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppNewGameModal {
     pub fn new() -> Self {
         Self {

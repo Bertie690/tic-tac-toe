@@ -151,6 +151,12 @@ pub struct AppSidebarComponent {
     component: SidebarComponent,
 }
 
+impl Default for AppSidebarComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppSidebarComponent {
     pub fn new() -> Self {
         Self {

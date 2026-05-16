@@ -123,7 +123,7 @@ impl Model {
             Message::Redraw => {
                 self.redraw = true;
                 None
-            },
+            }
             Message::AppQuit => {
                 self.quit = true;
                 self.terminal.restore().ok()?;

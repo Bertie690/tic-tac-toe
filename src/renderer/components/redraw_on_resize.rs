@@ -2,7 +2,7 @@ use ratatui::{Frame, layout::Rect};
 use tuirealm::{
     command::{Cmd, CmdResult},
     component::{AppComponent, Component},
-    event::{Event,},
+    event::Event,
     props::{AttrValue, Attribute, QueryResult},
     state::State,
 };

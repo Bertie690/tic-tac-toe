@@ -74,12 +74,11 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Err(panic_payload) => {
-            if let Some(e) = panic_payload.downcast_ref::<anyhow::Error>() {
-                if e.downcast_ref::<crate::player::PlayerDisconnected>()
+            if let Some(e) = panic_payload.downcast_ref::<anyhow::Error>()
+                && e.downcast_ref::<crate::player::PlayerDisconnected>()
                     .is_some()
-                {
-                    return Ok(());
-                }
+            {
+                return Ok(());
             }
             Err(anyhow::anyhow!("Game thread panicked: {:?}", panic_payload))
         }

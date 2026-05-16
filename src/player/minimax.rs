@@ -31,7 +31,6 @@ impl Player for Minimax {
 fn minimax_move(board: &Board, cpu_mark: Mark) -> anyhow::Result<Position> {
     board
         .available_moves()
-        .into_iter()
         .max_by_key(|&pos| {
             let b = &mut board.clone();
             b.set_mark(pos, cpu_mark);
@@ -71,7 +70,7 @@ fn alpha_beta(
         let b = &mut board.clone();
         b.set_mark(pos, current);
 
-        let score = alpha_beta(&b, cpu_mark, alpha, beta, !is_maximizing);
+        let score = alpha_beta(b, cpu_mark, alpha, beta, !is_maximizing);
 
         if is_maximizing {
             best = best.max(score);

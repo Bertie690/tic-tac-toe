@@ -1,6 +1,6 @@
 use crate::game::mark::Mark;
 use crate::game::result::GameResult;
-use ndarray::{Array2, ArrayView2};
+use ndarray::{Array2, ArrayView2, Axis};
 
 /// An (x, y) position in the playing field.
 pub type Position = (usize, usize);
@@ -52,14 +52,15 @@ impl Board {
         let cols = self.grid.columns().into_iter();
         let primary_diagonal = self.grid.diag();
 
-        // NB: view() used here as `reversed_axes` mutates the underlying array (which we don't want here)
-        let transposed = self.grid.view().reversed_axes();
-        let secondary_diagonal = transposed.diag();
+        // NB: inverting either one axis swaps the primary and secondary diagonals
+        let mut transposed = self.grid.view();
+        transposed.invert_axis(Axis(0));
+        let secondary_diagnonal = transposed.diag();
 
         let lines = rows
             .chain(cols)
             .chain(std::iter::once(primary_diagonal))
-            .chain(std::iter::once(secondary_diagonal));
+            .chain(std::iter::once(secondary_diagnonal));
 
         for line in lines {
             if let Some(&mark) = line.iter().flatten().next()
@@ -141,15 +142,17 @@ mod tests {
         ]);
         assert_eq!(board.state(), GameResult::Winner(Mark::O));
     }
+
     #[test]
-    fn test_board_state_o_wins_anti_diagonal() {
+    fn test_board_state_o_wins_secondary_diagonal() {
         let board = Board::new(array![
-            [Some(Mark::O), Some(Mark::X), None],
-            [Some(Mark::X), Some(Mark::O), None],
             [None, Some(Mark::X), Some(Mark::O)],
+            [Some(Mark::X), Some(Mark::O), None],
+            [Some(Mark::O), Some(Mark::X), None],
         ]);
         assert_eq!(board.state(), GameResult::Winner(Mark::O));
     }
+
     #[test]
     fn test_board_state_draw() {
         let board = Board::new(array![
@@ -159,6 +162,7 @@ mod tests {
         ]);
         assert_eq!(board.state(), GameResult::Draw);
     }
+
     #[test]
     fn test_board_state_ongoing() {
         let board = Board::new(array![

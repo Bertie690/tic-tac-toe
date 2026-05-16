@@ -133,7 +133,7 @@ impl AppStatusComponent {
     fn handle_game_update(&mut self, update: &GameUpdate) {
         match update {
             GameUpdate::Initial(_) => {
-                self.component.set("New game started");
+                self.component.set("New game started!");
             }
             GameUpdate::Move(mv) => {
                 self.component.set(format!(

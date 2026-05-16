@@ -43,21 +43,29 @@ impl Board {
     ///
     /// If multiple win conditions are satisfied, the return value is unspecified
     /// (as this signifies an invalid board state).
+    ///
+    /// Note that callers should strive to memoize this value where possible, as each call to [`state`]
+    /// requires re-computing the result from the current board state.
     pub fn state(&self) -> GameResult {
-        // Check for a winner in rows, columns, and diagonals.
-        let lines = self
-            .grid
-            .rows()
-            .into_iter()
-            .chain(self.grid.columns().into_iter())
-            .chain(std::iter::once(self.grid.diag()))
-            .chain(std::iter::once(self.grid.diag().reversed_axes()));
+        // Check for a winner in rows, columns, and both diagonals
+        let rows = self.grid.rows().into_iter();
+        let cols = self.grid.columns().into_iter();
+        let primary_diagonal = self.grid.diag();
+
+        // NB: view() used here as `reversed_axes` mutates the underlying array (which we don't want here)
+        let transposed = self.grid.view().reversed_axes();
+        let secondary_diagonal = transposed.diag();
+
+        let lines = rows
+            .chain(cols)
+            .chain(std::iter::once(primary_diagonal))
+            .chain(std::iter::once(secondary_diagonal));
 
         for line in lines {
-            if let Some(mark) = line.iter().cloned().flatten().next() {
-                if line.iter().all(|&cell| cell == Some(mark)) {
-                    return GameResult::Winner(mark);
-                }
+            if let Some(&mark) = line.iter().flatten().next()
+                && line.iter().all(|&cell| cell == Some(mark))
+            {
+                return GameResult::Winner(mark);
             }
         }
 
@@ -104,6 +112,8 @@ mod tests {
     use crate::game::{mark::Mark, result::GameResult};
     use ndarray::array;
 
+    // The following 4 tests comprise every way a game can be won - row, col, both diagnonals
+
     #[test]
     fn test_board_state_x_wins() {
         let board = Board::new(array![
@@ -123,11 +133,20 @@ mod tests {
         assert_eq!(board.state(), GameResult::Winner(Mark::X));
     }
     #[test]
-    fn test_board_state_o_wins() {
+    fn test_board_state_o_wins_diagonal() {
         let board = Board::new(array![
             [Some(Mark::O), Some(Mark::X), Some(Mark::O)],
             [Some(Mark::X), Some(Mark::O), None],
             [Some(Mark::X), Some(Mark::X), Some(Mark::O)],
+        ]);
+        assert_eq!(board.state(), GameResult::Winner(Mark::O));
+    }
+    #[test]
+    fn test_board_state_o_wins_anti_diagonal() {
+        let board = Board::new(array![
+            [Some(Mark::O), Some(Mark::X), None],
+            [Some(Mark::X), Some(Mark::O), None],
+            [None, Some(Mark::X), Some(Mark::O)],
         ]);
         assert_eq!(board.state(), GameResult::Winner(Mark::O));
     }

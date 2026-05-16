@@ -1,5 +1,7 @@
 # tic-tac-toe
 
+[![Code Quality](https://github.com/Bertie690/tic-tac-toe/actions/workflows/code-quality.yml/badge.svg?branch=main)](https://github.com/Bertie690/tic-tac-toe/actions/workflows/code-quality.yml)
+
 A basic Tic-Tac-Toe application written in Rust, used as a learning exercise in Rust and UI development.
 
 The TUI is created using [tuirealm](https://github.com/veeso/tui-realm/).
